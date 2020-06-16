@@ -55,7 +55,9 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     weights.push_back(1.00);
   }
   is_initialized=true;
-
+  
+  std::cout<<"Initialisation done"<<std::endl;
+return;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], 
@@ -72,7 +74,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
     normal_distribution<double> dist_y(0, std_pos[1]);
     normal_distribution<double> dist_theta(0, std_pos[2]);
   
-  
+  std::cout<<"Prediction step, num particles: "<<particles.size()<<std::endl;
   for(int i=0;i<num_particles;++i)
   {
     Particle current=particles[i];
@@ -97,21 +99,22 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
 return;
 }
 
-std::pair<LandmarkObs,int> findClosest(LandmarkObs observation,vector<LandmarkObs>& predicted)
+LandmarkObs findClosest(LandmarkObs observation,vector<LandmarkObs> predicted)
 {
   int distance=INT_MAX;
   int result;
   for(size_t i=0;i<predicted.size();++i)
   {
-    if(distance<((predicted[i].x-observation.x)*(predicted[i].x-observation.x)+(predicted[i].y-observation.y)*(predicted[i].y-observation.y)))
+    if(distance>((predicted[i].x-observation.x)*(predicted[i].x-observation.x)+(predicted[i].y-observation.y)*(predicted[i].y-observation.y)))
        {
+      	 distance=((predicted[i].x-observation.x)*(predicted[i].x-observation.x)+(predicted[i].y-observation.y)*(predicted[i].y-observation.y));
          result=i;         
        }
        
        
   }
-       
-       return std::make_pair(predicted[result],result);
+         
+       return predicted[result];
        
   
 }
@@ -127,12 +130,15 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
    */
   
   // only assign id, that's it, don't update the x,y coordinate
+ 
   for(size_t i=0;i<observations.size();++i)
   {
-    std::pair<LandmarkObs,int> closest=findClosest(observations[i],predicted);
-    observations[i].id=closest.first.id;    
+    LandmarkObs closest=findClosest(observations[i],predicted);
+    
+    observations[i].id=closest.id;    
   }
-
+  
+  
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -151,7 +157,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    *   and the following is a good resource for the actual equation to implement
    *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
    */
-  
+  double normaliser= 1/(2*M_PI*std_landmark[0]*std_landmark[1]);
   for(int i=0;i<num_particles;++i)
   {
     Particle p = particles[i];
@@ -191,12 +197,23 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       {
         if(transformed.id==predicted.id)
         {
-          particles[i].weight*= ( 1/(2*M_PI*std_landmark[0]*std_landmark[1])) 
-            * exp( -( pow(transformed.x-predicted.x,2)/(2*pow(std_landmark[0], 2)) + 
-                     (pow(transformed.y-predicted.y,2)/(2*pow(std_landmark[1], 2))) ) );
+          //std::cout<<"Tranformed: "<<transformed.x<<","<<transformed.y<<std::endl;
+          //std::cout<<"predicted: "<<predicted.x<<","<<predicted.y<<std::endl;
+          
+          double xerror=pow(transformed.x-predicted.x,2)/(2*pow(std_landmark[0], 2));
+          double yerror=pow(transformed.y-predicted.y,2)/(2*pow(std_landmark[1], 2));                                 //std::cout<<"Sum: "<<xerror+yerror<<std::endl;   
+          double exponent=xerror+yerror;
+          
+          double error=exp(-exponent);
+          //std::cout<<"Error: "<<error<<std::endl;   
+             
+          particles[i].weight*= (normaliser* error);
           break;
         }
+        
       }
+      //std::cout<<"in here: "<<i<<" weight: "<<particles[i].weight<<std::endl;
+      weights[i]=particles[i].weight;
       
     }
     
@@ -213,28 +230,30 @@ void ParticleFilter::resample() {
    */
   
   // Step 1 Get all the weights and get the max weight
-  vector<double> weights;
   double maxWeight=DBL_MIN;
   
-  for(int i=0;i<num_particles;++i)
+  for(size_t i=0;i<weights.size();++i)
   {
-    maxWeight=maxWeight>particles[i].weight?maxWeight:particles[i].weight;
+    maxWeight=maxWeight>weights[i]?maxWeight:weights[i];
        
   }
-  
   // step two construct anpther vector and seed
   vector<Particle> resampled;
   double beta=0.0;
   srand( (unsigned)time( NULL ) );
-  int i=static_cast<int>(static_cast<float>( rand()/RAND_MAX)*num_particles);
+  int i=static_cast<int>((static_cast <float> (rand()) / static_cast <float> (RAND_MAX))*num_particles);
   
-  for(int index=0;index>num_particles;++index)
+  for(int index=0;index<num_particles;++index)
   {
-    beta=static_cast<float> (rand()/RAND_MAX)*2.0*maxWeight;
+    beta=(static_cast <float> (rand()) / static_cast <float> (RAND_MAX))*2.0*maxWeight;
+    
+    //std::cout<<"We are in resample "<<"i: "<<i<<" beta: "<<beta<<std::endl;
     while (weights[i]<beta)
     {
       beta-=weights[i];
+      //std::cout<<"Value of beta: "<<beta<<std::endl;
       i=(i+1)%num_particles;
+     // std::cout<<"value of i: "<<i<<std::endl;
     }
     
     resampled.push_back(particles[i]);    
